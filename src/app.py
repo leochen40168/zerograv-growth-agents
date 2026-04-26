@@ -8,11 +8,13 @@ from dotenv import load_dotenv
 from article_generator import ArticleGeneratorError, generate_prompts_for_topic
 from content_draft_generator import ContentDraftGeneratorError, generate_drafts_for_topic
 from daily_workflow import DailyWorkflowError, create_daily_tasks, get_pending_topics, mark_topics_as_in_progress
+from email_sender import EmailSenderError, load_email_log, send_vendor_email
 from lead_tracker import ALLOWED_LEAD_STATUSES, LeadTrackerError, add_lead, get_new_leads, load_leads, update_lead_status
 from metrics_tracker import MetricsTrackerError, add_metric, load_metrics, summarize_metrics, update_metric
 from review_queue import ALLOWED_REVIEW_STATUSES, ReviewQueueError, get_reviews_by_status, load_reviews, scan_drafts, update_review_status
 from task_manager import ALLOWED_STATUSES, TaskManagerError, add_task, get_today_tasks, load_tasks, update_task_status
-from wordpress_draft_publisher import WordPressDraftPublisherError, publish_drafts_for_topic
+from vendor_outreach import ALLOWED_CONTACT_STATUSES, ALLOWED_SOURCE_TYPES, VendorOutreachError, add_vendor, generate_vendor_email, get_vendors_by_status, load_vendors, update_vendor_status
+from website_content_exporter import WebsiteContentExporterError, export_drafts_for_topic
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,6 +25,8 @@ CSV_FILES = {
     "Topics": ("topics.csv", DATA_DIR / "topics.csv"),
     "Posting Tasks": ("posting_tasks.csv", DATA_DIR / "posting_tasks.csv"),
     "Seller Leads": ("seller_leads.csv", DATA_DIR / "seller_leads.csv"),
+    "Vendors": ("vendors.csv", DATA_DIR / "vendors.csv"),
+    "Email Outreach Log": ("email_outreach_log.csv", DATA_DIR / "email_outreach_log.csv"),
     "Content Reviews": ("content_reviews.csv", DATA_DIR / "content_reviews.csv"),
     "Metrics": ("metrics.csv", DATA_DIR / "metrics.csv"),
 }
@@ -159,22 +163,26 @@ def show_content_review_queue() -> None:
             st.rerun()
 
 
-def show_wordpress_draft_publisher(topics_df: pd.DataFrame) -> None:
-    st.header("WordPress Draft Publisher")
-    st.info("This creates WordPress posts with status=draft only. It does not publish.")
+def show_website_social_content_exporter(topics_df: pd.DataFrame) -> None:
+    st.header("Website / Social Content Exporter")
+    st.info(
+        "不會自動發布到網站\n\n"
+        "不會自動發布到 Facebook\n\n"
+        "只產生人工複製用的內容檔案"
+    )
     topic_ids = get_topic_ids(topics_df)
-    topic_id = st.selectbox("WordPress topic id", topic_ids) if topic_ids else st.number_input("WordPress topic id", min_value=1, step=1)
-    drafts = sorted(DRAFTS_DIR.glob(f"draft-topic-{int(topic_id)}-*seo-article*.md"))
-    st.info("No SEO article draft found in outputs/drafts for this topic." if not drafts else f"Found {len(drafts)} SEO article draft file(s).")
-    if st.button("Publish SEO Draft to WordPress Draft"):
+    topic_id = st.selectbox("Export topic id", topic_ids) if topic_ids else st.number_input("Export topic id", min_value=1, step=1)
+    drafts = sorted(DRAFTS_DIR.glob(f"draft-topic-{int(topic_id)}-*.md"))
+    st.info("No draft files found in outputs/drafts for this topic." if not drafts else f"Found {len(drafts)} draft file(s).")
+    if st.button("Export Drafts for Manual Publishing"):
         try:
-            responses = publish_drafts_for_topic(int(topic_id))
-        except WordPressDraftPublisherError as error:
+            paths = export_drafts_for_topic(int(topic_id))
+        except WebsiteContentExporterError as error:
             st.error(str(error))
         else:
-            st.success("WordPress draft created. Review it manually before publishing.")
-            for response in responses:
-                st.json(response)
+            st.success("Drafts exported for manual copy publishing.")
+            for path in paths:
+                st.code(path)
 
 
 def show_posting_task_manager() -> None:
@@ -223,6 +231,98 @@ def show_posting_task_manager() -> None:
         else:
             st.success(f"Task updated: {task_id}")
             st.rerun()
+
+
+def show_vendor_email_outreach_agent() -> None:
+    st.header("Vendor Email Outreach Agent")
+    st.info(
+        "Only sends email when EMAIL_SEND_ENABLED=true. "
+        "Do not send to vendors without a public source_url, or to vendors marked opted_out / not_interested."
+    )
+    try:
+        vendors = load_vendors()
+        email_log = load_email_log()
+    except (VendorOutreachError, EmailSenderError) as error:
+        st.error(str(error))
+        return
+
+    st.subheader("Vendors")
+    st.dataframe(vendors, use_container_width=True)
+
+    with st.form("add_vendor"):
+        company_name = st.text_input("company_name")
+        website = st.text_input("website")
+        email = st.text_input("email")
+        phone = st.text_input("phone")
+        category = st.text_input("category", value="二手儀器 / 量測儀器 / 檢測設備")
+        source_url = st.text_input("source_url")
+        source_type = st.selectbox("source_type", sorted(ALLOWED_SOURCE_TYPES), index=sorted(ALLOWED_SOURCE_TYPES).index("manual"))
+        contact_status = st.selectbox("contact_status", sorted(ALLOWED_CONTACT_STATUSES), index=sorted(ALLOWED_CONTACT_STATUSES).index("new"))
+        last_contacted = st.text_input("last_contacted")
+        next_action = st.text_input("next_action")
+        notes = st.text_area("notes")
+        submitted = st.form_submit_button("Add Vendor")
+    if submitted:
+        try:
+            vendor_id = add_vendor(
+                company_name,
+                website=website,
+                email=email,
+                phone=phone,
+                category=category,
+                source_url=source_url,
+                source_type=source_type,
+                contact_status=contact_status,
+                last_contacted=last_contacted,
+                next_action=next_action,
+                notes=notes,
+            )
+        except VendorOutreachError as error:
+            st.error(str(error))
+        else:
+            st.success(f"Vendor added: {vendor_id}")
+            st.rerun()
+
+    st.subheader("Filter by Status")
+    status_filter = st.selectbox("vendor status filter", sorted(ALLOWED_CONTACT_STATUSES), index=sorted(ALLOWED_CONTACT_STATUSES).index("new"))
+    try:
+        filtered_vendors = get_vendors_by_status(status_filter)
+    except VendorOutreachError as error:
+        st.error(str(error))
+        filtered_vendors = pd.DataFrame()
+    st.dataframe(filtered_vendors, use_container_width=True)
+
+    if vendors.empty:
+        st.info("No vendors available for email drafting.")
+    else:
+        st.subheader("Draft / Send Email")
+        vendor_ids = [int(item) for item in pd.to_numeric(vendors["id"], errors="coerce").dropna()]
+        selected_vendor_id = st.selectbox("vendor id", vendor_ids)
+        template_type = st.selectbox("template_type", ["initial", "follow_up"])
+        if st.button("Generate Vendor Email"):
+            try:
+                email = generate_vendor_email(selected_vendor_id, template_type=template_type)
+            except VendorOutreachError as error:
+                st.error(str(error))
+            else:
+                st.text_input("subject", value=email["subject"], key="vendor_email_subject")
+                st.text_area("body", value=email["body"], height=360, key="vendor_email_body")
+                try:
+                    update_vendor_status(selected_vendor_id, "email_drafted")
+                except VendorOutreachError as error:
+                    st.warning(str(error))
+        if st.button("Send Email"):
+            try:
+                result = send_vendor_email(selected_vendor_id, template_type=template_type)
+            except (EmailSenderError, VendorOutreachError) as error:
+                st.error(str(error))
+            else:
+                st.success("Email sent.")
+                st.json(result)
+                st.rerun()
+
+    st.subheader("Email Outreach Log")
+    st.dataframe(email_log, use_container_width=True)
 
 
 def show_seller_lead_tracker() -> None:
@@ -349,7 +449,7 @@ def show_metrics_tracker() -> None:
 load_dotenv(BASE_DIR / ".env")
 st.set_page_config(page_title="ZeroGrav Growth Agents MVP", layout="wide")
 st.title("ZeroGrav Growth Agents MVP")
-st.caption("Manual daily growth dashboard. No automatic Facebook actions, WordPress publishing, OpenAI calls, or external API calls run unless a human explicitly uses the related draft-only tools.")
+st.caption("Manual daily growth dashboard. No automatic website publishing, Facebook actions, WordPress publishing, OpenAI calls, or external API calls run unless a human explicitly uses the related draft-only tools.")
 
 dataframes = {label: (filename, ensure_csv(path)) for label, (filename, path) in CSV_FILES.items()}
 cols = st.columns(len(dataframes))
@@ -370,10 +470,12 @@ with st.expander("Content Draft Generator", expanded=False):
     show_content_draft_generator(topics_df)
 with st.expander("Content Review Queue", expanded=False):
     show_content_review_queue()
-with st.expander("WordPress Draft Publisher", expanded=False):
-    show_wordpress_draft_publisher(topics_df)
+with st.expander("Website / Social Content Exporter", expanded=False):
+    show_website_social_content_exporter(topics_df)
 with st.expander("Posting Task Manager", expanded=False):
     show_posting_task_manager()
+with st.expander("Vendor Email Outreach Agent", expanded=False):
+    show_vendor_email_outreach_agent()
 with st.expander("Seller Lead Tracker", expanded=False):
     show_seller_lead_tracker()
 with st.expander("Metrics Tracker", expanded=False):
