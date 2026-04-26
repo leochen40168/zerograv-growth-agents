@@ -4,6 +4,8 @@ ZeroGrav Growth Agents MVP is a local Streamlit dashboard for planning daily col
 
 This project does not automatically operate Facebook, scrape groups, send messages, comment, like, publish website posts, publish WordPress posts, or hard-code API keys. Generated content still requires human review and manual publishing.
 
+It also includes a low-volume B2B `Vendor Email Outreach Agent` for manually managed vendor outreach. Email sending is disabled by default and only works when a human configures SMTP credentials and sets `EMAIL_SEND_ENABLED=true`.
+
 ## Installation
 
 ```powershell
@@ -39,6 +41,21 @@ WORDPRESS_APP_PASSWORD=your_application_password
 ```
 
 The OpenAI key is only used when a human clicks draft generation or runs the draft CLI. WordPress credentials are reserved for optional future draft-only workflows. They are not used for Facebook, website publishing, posting, comments, messages, or likes.
+
+Vendor email outreach is optional and disabled by default:
+
+```powershell
+EMAIL_SMTP_HOST=
+EMAIL_SMTP_PORT=587
+EMAIL_SMTP_USERNAME=
+EMAIL_SMTP_PASSWORD=
+EMAIL_FROM_NAME=ZeroGrav
+EMAIL_FROM_ADDRESS=
+EMAIL_DAILY_LIMIT=20
+EMAIL_SEND_ENABLED=false
+```
+
+Keep SMTP credentials local in `.env`. Do not hard-code API keys, SMTP passwords, or email passwords in source files.
 
 ## Daily SOP
 
@@ -129,6 +146,38 @@ Allowed task statuses:
 - `reviewed`
 - `published`
 - `skipped`
+
+## Vendor Email Outreach Agent
+
+The `Vendor Email Outreach Agent` supports a compliant, low-risk B2B outreach workflow for companies that already publicly sell used instruments, measuring instruments, or inspection equipment online. It is meant for manually collected leads from company websites, Facebook pages, Facebook group posts, Google search results, or direct manual research.
+
+Vendor records are stored in `data/vendors.csv` with company name, website, email, phone, category, source URL, source type, contact status, next action, and notes. Always record the public `source_url` where the email or contact route was found. The app will not send email to a vendor with a blank `source_url`.
+
+Use the dashboard to add vendors, filter by `contact_status`, and generate `initial` or `follow_up` email drafts. The email copy is Traditional Chinese, professional, low-pressure, and explains that ZeroGrav is a centralized exposure platform for used instruments and equipment. It states that listing can be free, does not replace the vendor's own website, can start with 3-5 equipment listings, lets buyers contact vendors through vendor-approved channels, and does not promise deals or exaggerate traffic.
+
+Email sending is intentionally disabled by default. To enable small-volume sending, configure SMTP in `.env`, set `EMAIL_SEND_ENABLED=true`, and keep `EMAIL_DAILY_LIMIT` low. Recommended daily volume is 10-20 emails. Before sending, make sure the sending domain has SPF, DKIM, and DMARC configured.
+
+The sender will not send to vendors marked `opted_out` or `not_interested`, will not send to blank email addresses, will not send without a `source_url`, and will stop once the daily limit is reached. Sending results are stored in `data/email_outreach_log.csv`.
+
+Allowed vendor `contact_status` values:
+
+- `new`
+- `email_drafted`
+- `email_sent`
+- `follow_up_needed`
+- `replied`
+- `interested`
+- `not_interested`
+- `opted_out`
+- `listed`
+
+Allowed `source_type` values:
+
+- `website`
+- `facebook_page`
+- `facebook_group`
+- `google_search`
+- `manual`
 
 ## Seller Lead Tracker
 
