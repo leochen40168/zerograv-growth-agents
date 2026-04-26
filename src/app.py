@@ -12,7 +12,7 @@ from lead_tracker import ALLOWED_LEAD_STATUSES, LeadTrackerError, add_lead, get_
 from metrics_tracker import MetricsTrackerError, add_metric, load_metrics, summarize_metrics, update_metric
 from review_queue import ALLOWED_REVIEW_STATUSES, ReviewQueueError, get_reviews_by_status, load_reviews, scan_drafts, update_review_status
 from task_manager import ALLOWED_STATUSES, TaskManagerError, add_task, get_today_tasks, load_tasks, update_task_status
-from wordpress_draft_publisher import WordPressDraftPublisherError, publish_drafts_for_topic
+from website_content_exporter import WebsiteContentExporterError, export_drafts_for_topic
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -159,22 +159,26 @@ def show_content_review_queue() -> None:
             st.rerun()
 
 
-def show_wordpress_draft_publisher(topics_df: pd.DataFrame) -> None:
-    st.header("WordPress Draft Publisher")
-    st.info("This creates WordPress posts with status=draft only. It does not publish.")
+def show_website_social_content_exporter(topics_df: pd.DataFrame) -> None:
+    st.header("Website / Social Content Exporter")
+    st.info(
+        "不會自動發布到網站\n\n"
+        "不會自動發布到 Facebook\n\n"
+        "只產生人工複製用的內容檔案"
+    )
     topic_ids = get_topic_ids(topics_df)
-    topic_id = st.selectbox("WordPress topic id", topic_ids) if topic_ids else st.number_input("WordPress topic id", min_value=1, step=1)
-    drafts = sorted(DRAFTS_DIR.glob(f"draft-topic-{int(topic_id)}-*seo-article*.md"))
-    st.info("No SEO article draft found in outputs/drafts for this topic." if not drafts else f"Found {len(drafts)} SEO article draft file(s).")
-    if st.button("Publish SEO Draft to WordPress Draft"):
+    topic_id = st.selectbox("Export topic id", topic_ids) if topic_ids else st.number_input("Export topic id", min_value=1, step=1)
+    drafts = sorted(DRAFTS_DIR.glob(f"draft-topic-{int(topic_id)}-*.md"))
+    st.info("No draft files found in outputs/drafts for this topic." if not drafts else f"Found {len(drafts)} draft file(s).")
+    if st.button("Export Drafts for Manual Publishing"):
         try:
-            responses = publish_drafts_for_topic(int(topic_id))
-        except WordPressDraftPublisherError as error:
+            paths = export_drafts_for_topic(int(topic_id))
+        except WebsiteContentExporterError as error:
             st.error(str(error))
         else:
-            st.success("WordPress draft created. Review it manually before publishing.")
-            for response in responses:
-                st.json(response)
+            st.success("Drafts exported for manual copy publishing.")
+            for path in paths:
+                st.code(path)
 
 
 def show_posting_task_manager() -> None:
@@ -349,7 +353,7 @@ def show_metrics_tracker() -> None:
 load_dotenv(BASE_DIR / ".env")
 st.set_page_config(page_title="ZeroGrav Growth Agents MVP", layout="wide")
 st.title("ZeroGrav Growth Agents MVP")
-st.caption("Manual daily growth dashboard. No automatic Facebook actions, WordPress publishing, OpenAI calls, or external API calls run unless a human explicitly uses the related draft-only tools.")
+st.caption("Manual daily growth dashboard. No automatic website publishing, Facebook actions, WordPress publishing, OpenAI calls, or external API calls run unless a human explicitly uses the related draft-only tools.")
 
 dataframes = {label: (filename, ensure_csv(path)) for label, (filename, path) in CSV_FILES.items()}
 cols = st.columns(len(dataframes))
@@ -370,8 +374,8 @@ with st.expander("Content Draft Generator", expanded=False):
     show_content_draft_generator(topics_df)
 with st.expander("Content Review Queue", expanded=False):
     show_content_review_queue()
-with st.expander("WordPress Draft Publisher", expanded=False):
-    show_wordpress_draft_publisher(topics_df)
+with st.expander("Website / Social Content Exporter", expanded=False):
+    show_website_social_content_exporter(topics_df)
 with st.expander("Posting Task Manager", expanded=False):
     show_posting_task_manager()
 with st.expander("Seller Lead Tracker", expanded=False):

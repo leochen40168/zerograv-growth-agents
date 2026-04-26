@@ -1,8 +1,8 @@
 # ZeroGrav Growth Agents MVP
 
-ZeroGrav Growth Agents MVP is a local Streamlit dashboard for planning daily cold-start content, generating prompt files, tracking drafts for human review, managing seller leads, and recording manual metrics.
+ZeroGrav Growth Agents MVP is a local Streamlit dashboard for planning daily cold-start content, generating prompt files, tracking drafts for human review, exporting website and social content for manual copy publishing, managing seller leads, and recording manual metrics.
 
-This project does not automatically operate Facebook, scrape groups, send messages, comment, like, publish WordPress posts, or hard-code API keys. WordPress integration creates `draft` posts only, and generated content still requires human review.
+This project does not automatically operate Facebook, scrape groups, send messages, comment, like, publish website posts, publish WordPress posts, or hard-code API keys. Generated content still requires human review and manual publishing.
 
 ## Installation
 
@@ -30,7 +30,7 @@ OPENAI_API_KEY=your_api_key_here
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-WordPress draft creation is optional:
+WordPress draft creation is an optional future feature:
 
 ```powershell
 WORDPRESS_URL=https://your-wordpress-site.com
@@ -38,22 +38,22 @@ WORDPRESS_USERNAME=your_username
 WORDPRESS_APP_PASSWORD=your_application_password
 ```
 
-The OpenAI key is only used when a human clicks draft generation or runs the draft CLI. WordPress credentials are only used to create WordPress posts with `status: draft`. They are not used for Facebook, posting, comments, messages, or likes.
+The OpenAI key is only used when a human clicks draft generation or runs the draft CLI. WordPress credentials are reserved for optional future draft-only workflows. They are not used for Facebook, website publishing, posting, comments, messages, or likes.
 
 ## Daily SOP
 
-1. Start the dashboard with `streamlit run src/app.py`.
-2. Open `Daily Growth Workflow` and click `Create Daily Tasks`.
-3. Open `Generate Content Prompts` and create prompt markdown for selected topics.
-4. Optionally open `Content Draft Generator` to generate local draft markdown with OpenAI.
-5. Open `Content Review Queue`, scan drafts, and review every item manually.
-6. Manually publish approved Facebook page or group posts outside this app.
-7. Optionally use `WordPress Draft Publisher` to create a WordPress `draft`, then review and publish manually in WordPress.
-8. Update `Posting Task Manager` with status and `result_notes`.
-9. Add seller inquiries in `Seller Lead Tracker`.
-10. Enter manual performance numbers in `Metrics Tracker`.
+1. Open `Daily Growth Workflow` and click `Create Daily Tasks`.
+2. Open `Generate Content Prompts` and create prompt markdown for selected topics.
+3. Open `Content Draft Generator` and generate local draft markdown.
+4. Open `Content Review Queue` and click `Scan Drafts`.
+5. Review every draft manually.
+6. Open `Website / Social Content Exporter` and click `Export Drafts for Manual Publishing`.
+7. Manually copy approved website content to the zerograv.com.tw website admin.
+8. Manually publish approved content to the Facebook page or Facebook group.
+9. If there is an inquiry, add it in `Seller Lead Tracker`.
+10. In the evening, enter manual performance numbers in `Metrics Tracker`.
 
-The SOP is intentionally human-in-the-loop. The dashboard creates local records and draft files only.
+The SOP is intentionally human-in-the-loop. The dashboard creates local records, draft files, and manual copy export files only.
 
 ## Generate Prompts
 
@@ -93,26 +93,30 @@ Suggested review flow:
 2. Scan Drafts
 3. Review items in `needs_review`
 4. Mark each item `approved` or `needs_rewrite`
-5. After approval, manually publish or create a WordPress draft
+5. After approval, export drafts for manual publishing
 6. After manual publishing, mark the item `published`
 
-## WordPress Draft Publisher
+## Website / Social Content Exporter
 
-This feature creates WordPress posts with `status: draft` from SEO article markdown drafts in `outputs/drafts/`. It does not publish posts automatically.
+This feature creates manual copy files in `outputs/exports/` from markdown drafts in `outputs/drafts/`. It does not publish to zerograv.com.tw, Facebook pages, Facebook groups, WordPress, or any other channel.
 
-Create a draft from one markdown file:
-
-```powershell
-python src/wordpress_draft_publisher.py --markdown-path outputs/drafts/draft-topic-1-seo-article.md
-```
-
-Create drafts for a topic:
+Export one draft:
 
 ```powershell
-python src/wordpress_draft_publisher.py --topic-id 1
+python -c "from src.website_content_exporter import export_draft; print(export_draft('outputs/drafts/draft-topic-1-seo-article.md'))"
 ```
 
-Only draft files with `seo-article` in the filename are sent to WordPress, and the created WordPress post status is always `draft`.
+Export drafts for a topic:
+
+```powershell
+python -c "from src.website_content_exporter import export_drafts_for_topic; print(export_drafts_for_topic(1))"
+```
+
+Exported files are saved as `outputs/exports/export-{original-draft-filename}` and include metadata with `publish_method: manual_copy`.
+
+## Optional Future WordPress Draft Publisher
+
+WordPress draft publishing is not part of the current main workflow because ZeroGrav currently uses zerograv.com.tw plus Facebook page and group channels. If WordPress is added later, draft-only integration can remain optional and must still require human review before publishing.
 
 ## Posting Task Manager
 
